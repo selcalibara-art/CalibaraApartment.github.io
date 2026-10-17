@@ -9,6 +9,8 @@ import {
   formatKwh,
   generateAccessCode,
   filterBillsForTenant,
+  generateBillShareUrl,
+  parseBillFromUrl,
 } from './billing.ts';
 import type { BillItem } from '../types/billing.ts';
 
@@ -159,4 +161,43 @@ test('Master Admin password validation matches /Calibara0911', () => {
   const pass = '/Calibara0911';
   assert.equal(pass === '/Calibara0911', true);
   assert.equal(pass.toLowerCase() === '/calibara0911', true);
+});
+
+test('generateBillShareUrl and parseBillFromUrl: serializes and restores bill accurately', () => {
+  const sample: BillItem = {
+    id: 'bill-test-share',
+    unitId: 'UNIT A1',
+    billingPeriod: 'Bill for June - July',
+    lastReading: 1824.5,
+    currentReading: 1926.2,
+    consumptionKwh: 101.7,
+    perKwhRate: 15.0,
+    electricityTotal: 1525.5,
+    rent1Label: 'Rent June',
+    rent1Amount: 3500,
+    rent2Label: 'Rent July',
+    rent2Amount: 3500,
+    grandTotal: 8525.5,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    accessCode: 'A1-1001',
+    notes: 'Thank you for your prompt payment.',
+    isPaid: false,
+  };
+
+  const shareUrl = generateBillShareUrl(sample, 'https://selcalibara-art.github.io/CalibaraApartment.github.io/');
+  assert.match(shareUrl, /code=A1-1001/);
+  assert.match(shareUrl, /billData=/);
+
+  const query = shareUrl.split('?')[1];
+  const restored = parseBillFromUrl(`?${query}`);
+  assert.ok(restored);
+  assert.equal(restored?.unitId, 'UNIT A1');
+  assert.equal(restored?.accessCode, 'A1-1001');
+  assert.equal(restored?.lastReading, 1824.5);
+  assert.equal(restored?.currentReading, 1926.2);
+  assert.equal(restored?.consumptionKwh, 101.7);
+  assert.equal(restored?.electricityTotal, 1525.5);
+  assert.equal(restored?.grandTotal, 8525.5);
+  assert.equal(restored?.rent1Label, 'Rent June');
+  assert.equal(restored?.rent1Amount, 3500);
 });

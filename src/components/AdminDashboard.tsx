@@ -8,6 +8,7 @@ import {
   formatKwh,
   formatReading,
   generateAccessCode,
+  generateBillShareUrl,
 } from '../utils/billing.ts';
 import {
   Building2,
@@ -29,6 +30,8 @@ import {
   QrCode,
   UploadCloud,
   FileImage,
+  Share2,
+  Copy,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -93,6 +96,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [rent2Amount, setRent2Amount] = useState<number>(latestUnitBill?.rent2Amount ?? 0.0);
   const [notes, setNotes] = useState<string>(latestUnitBill?.notes || '');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [shareSuccessMsg, setShareSuccessMsg] = useState<string | null>(null);
   const [proofViewingBill, setProofViewingBill] = useState<BillItem | null>(null);
 
   // New Code state for active unit
@@ -102,6 +106,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSelectUnit = (unitId: string) => {
     setSelectedUnitId(unitId);
     setSaveSuccessMsg(null);
+    setShareSuccessMsg(null);
     const targetBills = bills
       .filter((b) => b.unitId === unitId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -136,6 +141,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleNewBillCycle = () => {
     setEditingBillId(null);
     setSaveSuccessMsg(null);
+    setShareSuccessMsg(null);
     const defaultLast = latestUnitBill ? latestUnitBill.currentReading : 0;
     setBillingPeriod('Bill for Upcoming Period');
     setLastReading(defaultLast);
@@ -191,6 +197,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingBillId(newBill.id);
     setSaveSuccessMsg('✓ Bill published successfully and stamped with active access code!');
     setTimeout(() => setSaveSuccessMsg(null), 4000);
+  };
+
+  // Share Bill directly with tenant via Messenger/WhatsApp link
+  const handleShareTenantBill = (billToShare?: BillItem) => {
+    const targetBill: BillItem = billToShare || {
+      id: editingBillId || `bill-${selectedUnitId.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`,
+      unitId: selectedUnitId,
+      billingPeriod: billingPeriod.trim() || 'Bill for Current Cycle',
+      lastReading: Number(lastReading) || 0,
+      currentReading: Number(currentReading) || 0,
+      consumptionKwh: autoConsumption,
+      perKwhRate: Number(perKwhRate) || 15.0,
+      electricityTotal: autoElecBill,
+      rent1Label: rent1Label.trim() || 'Rent',
+      rent1Amount: Number(rent1Amount) || 0,
+      rent2Label: rent2Label.trim(),
+      rent2Amount: Number(rent2Amount) || 0,
+      grandTotal: autoGrandTotal,
+      createdAt: editingBillId && latestUnitBill?.id === editingBillId ? latestUnitBill.createdAt : new Date().toISOString(),
+      accessCode: currentUnit.activeAccessCode,
+      isPaid: editingBillId && latestUnitBill?.id === editingBillId ? latestUnitBill.isPaid : false,
+      notes: notes.trim(),
+    };
+
+    // Also auto-save to ensure local state is up-to-date
+    onSaveBill(targetBill);
+    setEditingBillId(targetBill.id);
+
+    const shareUrl = generateBillShareUrl(targetBill);
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      navigator
+        .share({
+          title: `Calibara Apartment - ${targetBill.unitId} Bill`,
+          text: `Calibara Apartment Billing Statement (${targetBill.billingPeriod}) - Total Due: ${formatCurrency(targetBill.grandTotal)}`,
+          url: shareUrl,
+        })
+        .catch(() => {
+          navigator.clipboard?.writeText(shareUrl);
+        });
+    } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl);
+    }
+
+    setShareSuccessMsg(
+      `✓ Direct Messenger link copied! Send this to your tenant in Messenger. When they tap it, their phone will load your updated bill instantly.`
+    );
+    setTimeout(() => setShareSuccessMsg(null), 10000);
   };
 
   // Access Code generation
@@ -408,6 +462,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
 
+              {/* Success / Share Alert Banners */}
+              {saveSuccessMsg && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded text-xs font-semibold flex items-center gap-1.5 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>{saveSuccessMsg}</span>
+                </div>
+              )}
+
+              {shareSuccessMsg && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-300 text-blue-950 rounded text-xs font-medium space-y-1 animate-fadeIn">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>Direct Tenant Link Ready!</span>
+                  </div>
+                  <p className="text-[11px] text-blue-900/90 leading-relaxed">
+                    {shareSuccessMsg}
+                  </p>
+                </div>
+              )}
+
               <form onSubmit={handlePublishBill} className="space-y-4">
                 {/* Billing Period */}
                 <div>
@@ -575,30 +649,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 {/* Submit Action Buttons */}
-                <div className="pt-2 flex items-center gap-3">
-                  <button
-                    type="submit"
-                    className="flex-1 bg-[#2C332B] hover:bg-black text-white font-sans-dm text-xs font-bold uppercase tracking-wider py-3 px-4 rounded transition-all shadow-sm flex items-center justify-center gap-2"
-                  >
-                    <Save className="w-4 h-4" />
-                    Publish / Update Official Bill
-                  </button>
+                <div className="pt-2 space-y-2.5">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-[#2C332B] hover:bg-black text-white font-sans-dm text-xs font-bold uppercase tracking-wider py-3 px-4 rounded transition-all shadow-sm flex items-center justify-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      Publish / Update Official Bill
+                    </button>
 
-                  {editingBillId && (
+                    {editingBillId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm('Are you sure you want to delete this bill record?')) {
+                            onDeleteBill(editingBillId);
+                            handleNewBillCycle();
+                          }
+                        }}
+                        className="px-3 py-3 text-xs text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 rounded font-semibold transition-colors"
+                        title="Delete this bill"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Share Directly with Tenant (Crucial for sending via Messenger / SMS) */}
+                  <div className="p-3 bg-[#EFECE6] border border-[#2C332B]/20 rounded space-y-1.5">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this bill record?')) {
-                          onDeleteBill(editingBillId);
-                          handleNewBillCycle();
-                        }
-                      }}
-                      className="px-3 py-3 text-xs text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 rounded font-semibold transition-colors"
-                      title="Delete this bill"
+                      onClick={() => handleShareTenantBill()}
+                      className="w-full bg-[#0084FF] hover:bg-[#0074e0] text-white font-sans-dm text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded transition-all shadow-sm flex items-center justify-center gap-2"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Share2 className="w-4 h-4" />
+                      <span>Copy Direct Link for Tenant (Messenger / SMS)</span>
                     </button>
-                  )}
+                    <p className="text-[10px] text-[#2C332B]/70 text-center leading-tight">
+                      📲 <strong>Send this link in Messenger</strong> so your tenant immediately sees your updated readings &amp; amounts without showing ₱0.00!
+                    </p>
+                  </div>
                 </div>
               </form>
             </div>
@@ -658,6 +749,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {currentUnit.activeAccessCode}
                   </span>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleShareTenantBill()}
+                  className="w-full mt-3 py-2 px-3 text-xs font-semibold rounded bg-[#EFECE6] hover:bg-[#DFDDD4] border border-[#2C332B]/20 text-[#2C332B] flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#0084FF]" />
+                  <span>Copy Direct Tenant Link</span>
+                </button>
               </div>
 
               {/* Quick History List for this Unit */}
@@ -670,31 +770,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {unitBills.map((b) => (
                     <div
                       key={b.id}
-                      onClick={() => {
-                        setEditingBillId(b.id);
-                        setBillingPeriod(b.billingPeriod);
-                        setLastReading(b.lastReading);
-                        setCurrentReading(b.currentReading);
-                        setPerKwhRate(b.perKwhRate);
-                        setRent1Label(b.rent1Label);
-                        setRent1Amount(b.rent1Amount);
-                        setRent2Label(b.rent2Label);
-                        setRent2Amount(b.rent2Amount);
-                        setNotes(b.notes || '');
-                      }}
-                      className={`p-2 rounded cursor-pointer transition-colors flex items-center justify-between ${
+                      className={`p-2 rounded transition-colors flex items-center justify-between gap-2 ${
                         b.id === editingBillId
                           ? 'bg-[#2C332B] text-white'
                           : 'bg-[#EFECE6] hover:bg-[#DFDDD4] text-[#2C332B]'
                       }`}
                     >
-                      <div>
+                      <div
+                        onClick={() => {
+                          setEditingBillId(b.id);
+                          setBillingPeriod(b.billingPeriod);
+                          setLastReading(b.lastReading);
+                          setCurrentReading(b.currentReading);
+                          setPerKwhRate(b.perKwhRate);
+                          setRent1Label(b.rent1Label);
+                          setRent1Amount(b.rent1Amount);
+                          setRent2Label(b.rent2Label);
+                          setRent2Amount(b.rent2Amount);
+                          setNotes(b.notes || '');
+                        }}
+                        className="cursor-pointer flex-1"
+                      >
                         <div className="font-semibold text-[11px]">{b.billingPeriod}</div>
                         <div className="text-[10px] opacity-75 font-mono">{b.accessCode}</div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-[11px]">{formatCurrency(b.grandTotal)}</div>
-                        <div className="text-[10px] opacity-80">{b.isPaid ? 'PAID' : 'DUE'}</div>
+                      <div className="text-right flex items-center gap-2">
+                        <div>
+                          <div className="font-bold text-[11px]">{formatCurrency(b.grandTotal)}</div>
+                          <div className="text-[10px] opacity-80">{b.isPaid ? 'PAID' : 'DUE'}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareTenantBill(b);
+                          }}
+                          className="p-1 rounded hover:bg-black/20 transition-colors"
+                          title="Copy direct link for this bill"
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import type { AppMode, BillItem, Unit, PaymentProof, PaymentSettings } from './types/billing.ts';
 import { INITIAL_BILLS, INITIAL_UNITS } from './utils/seedData.ts';
-import { filterBillsForTenant, getLatestBill } from './utils/billing.ts';
+import { filterBillsForTenant, getLatestBill, parseBillFromUrl } from './utils/billing.ts';
 import { Navbar } from './components/Navbar.tsx';
 import { InvoicePaper } from './components/InvoicePaper.tsx';
 import { SubmeterHistory } from './components/SubmeterHistory.tsx';
@@ -14,14 +14,14 @@ import { TenantLogin } from './components/TenantLogin.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { AdminPinModal } from './components/AdminPinModal.tsx';
 import { PaymentProofForm } from './components/PaymentProofForm.tsx';
-import { SlidersHorizontal, Info } from 'lucide-react';
+import { SlidersHorizontal, Info, CheckCircle2 } from 'lucide-react';
 
-// Storage keys version 3 to guarantee pristine 0-pesos initial state
+// Storage keys version 4 to update Unit A1 with official June-July bill
 const STORAGE_KEYS = {
-  UNITS: 'calibara_units_v3',
-  BILLS: 'calibara_bills_v3',
-  ACTIVE_CODE: 'calibara_active_code_v3',
-  PAYMENT_SETTINGS: 'calibara_payment_settings_v3',
+  UNITS: 'calibara_units_v4',
+  BILLS: 'calibara_bills_v4',
+  ACTIVE_CODE: 'calibara_active_code_v4',
+  PAYMENT_SETTINGS: 'calibara_payment_settings_v4',
 };
 
 export default function App() {
@@ -35,10 +35,34 @@ export default function App() {
     }
   });
 
+  // Track if a direct shared bill link was opened
+  const [sharedBannerMsg, setSharedBannerMsg] = useState<string | null>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const urlBill = parseBillFromUrl(window.location.search);
+        if (urlBill) {
+          return `✓ Live official bill for ${urlBill.unitId} (${urlBill.billingPeriod}) loaded from landlord.`;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
   const [bills, setBills] = useState<BillItem[]>(() => {
     try {
+      const urlBill = typeof window !== 'undefined' ? parseBillFromUrl(window.location.search) : null;
       const saved = localStorage.getItem(STORAGE_KEYS.BILLS);
-      return saved ? JSON.parse(saved) : INITIAL_BILLS;
+      const existing: BillItem[] = saved ? JSON.parse(saved) : INITIAL_BILLS;
+      if (urlBill) {
+        // Replace or prepend the landlord-shared bill so tenant immediately sees updated numbers!
+        const filtered = existing.filter((b) => b.id !== urlBill.id);
+        const merged = [urlBill, ...filtered];
+        localStorage.setItem(STORAGE_KEYS.BILLS, JSON.stringify(merged));
+        return merged;
+      }
+      return existing;
     } catch {
       return INITIAL_BILLS;
     }
@@ -63,9 +87,13 @@ export default function App() {
     }
   });
 
-  // Default to null so EVERYONE lands on the Tenant Login screen first!
+  // If a direct bill link was opened, immediately log in the tenant for their unit!
   const [tenantCode, setTenantCode] = useState<string | null>(() => {
     try {
+      const urlBill = typeof window !== 'undefined' ? parseBillFromUrl(window.location.search) : null;
+      if (urlBill) {
+        return urlBill.accessCode.toUpperCase();
+      }
       const params = new URLSearchParams(window.location.search);
       const urlCode = params.get('code');
       if (urlCode && urlCode !== '/Calibara0911' && urlCode !== 'Calibara0911') {
@@ -337,6 +365,24 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Shared Bill Loaded Banner */}
+            {sharedBannerMsg && (
+              <div className="no-print w-full max-w-[540px] mb-3 p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded text-xs font-medium flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{sharedBannerMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSharedBannerMsg(null)}
+                  className="text-emerald-800 hover:text-black text-xs font-bold px-1"
+                  aria-label="Dismiss banner"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {displayedBill ? (
               <>
