@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-paper: #F7F5F0;
+    --bg-stone: #E5E2DC;
+    --text-primary: #2C332B;
+    --row-standard: #EFECE6;
+    --row-subtotal: #DFDDD4;
+    --row-grandtotal: #CCC8B8;
+  }
+}
+
+body {
+  font-family: 'DM Sans', 'Noto Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.font-serif-cormorant {
+  font-family: 'Cormorant Garamond', 'Noto Sans', Georgia, Cambria, serif;
+}
+
+.font-sans-dm {
+  font-family: 'DM Sans', 'Noto Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", 'Noto Sans', monospace;
+}
+
+.font-script-caveat {
+  font-family: 'Caveat', 'Dancing Script', cursive;
+}
+
+/* Paper texture subtle effect */
+.paper-shadow {
+  box-shadow: 0 10px 30px -5px rgba(44, 51, 43, 0.08), 0 4px 12px -2px rgba(44, 51, 43, 0.04);
+}
+
+/* Print Stylesheet for true invoice receipts */
+@media print {
+  body {
+    background-color: white !important;
+    color: #2C332B !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1.5rem !important;
+    background-color: #F7F5F0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

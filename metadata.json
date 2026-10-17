@@ -1,0 +1,6 @@
+{
+  "name": "Calibara Apartment Tenant Billing Portal & Admin Web App",
+  "description": "Visual-faithful billing portal and landlord admin system for Calibara Apartment with submeter electricity calculations, tenant access codes, and submeter reading history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
